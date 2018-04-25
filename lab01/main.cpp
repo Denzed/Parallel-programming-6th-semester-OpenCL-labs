@@ -12,7 +12,7 @@
 #include <iterator>
 #include <vector>
 
-void read_int_matrix(std::ifstream &input_file, int *matrix, size_t size) {
+void read_float_matrix(std::ifstream &input_file, float *matrix, size_t size) {
     for (size_t i = 0; i < size; ++i) {
         input_file >> matrix[i];
     }
@@ -41,26 +41,27 @@ int main()
         std::string cl_string(std::istreambuf_iterator<char>(cl_file), (std::istreambuf_iterator<char>()));
         cl::Program::Sources source(1, cl_string);
 
+        // read data
+        std::ifstream input_file("input.txt");
+        size_t N, M, HM;
+        input_file >> N >> M;
+        HM = (M - 1) >> 1;
+
+        float a[N * N];
+        float b[M * M];
+        float c[N * N];
+          
+        read_float_matrix(input_file, a, N * N);
+        read_float_matrix(input_file, b, M * M);
+        memset(c, 0, sizeof(c));
+
         // create program
         cl::Program program(context, source);
 
         // compile opencl source
-        size_t const block_size = 16;
-        program.build(devices, ("-D BLOCK_SIZE=" + std::to_string(block_size)).c_str());
+        program.build(devices, ("-D HM=" + std::to_string(HM)).c_str());
 
-        // create a message to send to kernel
-        std::ifstream input_file("input.txt");
-        size_t N, M;
-        input_file >> N >> M;
-
-        int a[N * N];
-        int b[M * M];
-        int c[N * N];
-          
-        read_int_matrix(input_file, a, N * N);
-        read_int_matrix(input_file, b, M * M);
-        memset(c, 0, sizeof(c));
-
+        // create message 
         // allocate device buffer to hold message
         cl::Buffer dev_a(context, CL_MEM_READ_ONLY,  sizeof(a));
         cl::Buffer dev_b(context, CL_MEM_READ_ONLY,  sizeof(b));
@@ -73,20 +74,23 @@ int main()
         // load named kernel from opencl source
         cl::KernelFunctor<
                cl::Buffer,
+               int,
                cl::Buffer,
-               cl::Buffer,
-               int
+               int,
+               cl::Buffer
             > matrix_conv(program, "matrix_conv");
         cl::EnqueueArgs matrix_conv_eargs(
             queue, 
             cl::NullRange, 
             cl::NDRange(N, N), 
-            cl::NDRange(block_size, block_size)
+            cl::NDRange(2 * HM + 1, 2 * HM + 1)
         );
-        matrix_conv(matrix_conv_eargs, dev_a, dev_b, dev_c, N);
+        matrix_conv(matrix_conv_eargs, dev_a, N, dev_b, M, dev_c);
 
+        // copy from GPU to CPU
         queue.enqueueReadBuffer(dev_c, CL_TRUE, 0, sizeof(c), c);
 
+#ifdef DEBUG
         for (size_t i = 0; i < N; ++i) {
             for (size_t j = 0; j < N; ++j) {
                 size_t idx = i * N + j;
@@ -104,22 +108,18 @@ int main()
             std::cout << std::endl;
         }
         std::cout << std::endl;
+        std::cout << "finished" << std::endl;
+#endif
 
+        // output result
+        std::ofstream output_file("output.txt");
         for (size_t i = 0; i < N; ++i) {
             for (size_t j = 0; j < N; ++j) {
                 size_t idx = i * N + j;
-
-                int sum = 0;
-                for (int k = 0; k < N; ++k) {
-                    sum += a[i * N + k] * b[k * N + j];
-                }
-                if (c[idx] != sum)
-                    std::cout << i << " " << j << std::endl;
-                // std::cout << c[idx] - sum << " ";
+                output_file << std::setprecision(2) << std::fixed << c[idx] << " ";
             }
-            // std::cout << std::endl;
+            output_file << std::endl;
         }
-        std::cout << "finished" << std::endl;
     } catch (cl::Error e) {
         std::cout << std::endl << e.what() << " : " << e.err() << std::endl;
     }
