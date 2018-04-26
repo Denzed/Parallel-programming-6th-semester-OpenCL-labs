@@ -1,33 +1,51 @@
 __kernel void matrix_conv(
-   __global float *a, 
-   int n,
-   __global float *b, 
-   int m,
-   __global float *c
+    __global float *a, 
+    int n,
+    __global float *b, 
+    int m,
+    __global float *c
 ) {
-   int i = get_global_id(0);
-   int j = get_global_id(1);
-   int k = get_local_id(0);
-   int l = get_local_id(1);
+    // get coordinates
+    int i    = get_global_id(0);
+    int j    = get_global_id(1);
+    int i_wg = get_local_id(0);
+    int j_wg = get_local_id(1);
 
-   __local float a_local[2 * HM + 1][2 * HM + 1];
-   __local float b_local[m][m];
+    __local float b_local[M][M];
+    // load b to local memory for faster access inside work group
+    if (i_wg == 0 && j_wg == 0) {
+        for (int i_b = 0; i_b < m; ++i_b) {
+            for (int j_b = 0; j_b < m; ++j_b) {
+                b_local[i_b][j_b] = b[i_b * m + j_b];
+            }
+        }
+    }
 
-   int a_cell_i = i + k - HM;
-   int a_cell_j = j + l - HM;
-   
-   a_local[k][l] = (
-         0 <= a_cell_i && a_cell_i < n && 
-         0 <= a_cell_j && a_cell_j < n 
-      ? 
-         a[a_cell_i * n + a_cell_j] 
-      : 
-         0
-   );
+    // wait for b to load
+    barrier(CLK_LOCAL_MEM_FENCE);
 
-   b_local[k][l] = b[k * m + l];
+    // check that we are computing value inside C
+    if (i < n && j < n) {
+        const int HM = (m - 1) >> 1;
+    
+        // calculate result
+        float result = 0;
 
-   barrier(CLK_LOCAL_MEM_FENCE);
-
-   c[i * n + j] += a_local[k][l] * b_local[k][l];
+        for (int k = -HM; k <= HM; ++k) {
+            for (int l = -HM; l <= HM; ++l) {   
+                // calculate coordinates of A cell
+                int a_cell_i = i + k;
+                int a_cell_j = j + l;
+                // get A cell 
+                float a_cell = 0;
+                if (0 <= a_cell_i && a_cell_i < n && 
+                        0 <= a_cell_j && a_cell_j < n) {
+                    a_cell = a[a_cell_i * n + a_cell_j];
+                }
+                result += a_cell * b_local[k + HM][l + HM];
+            }
+        }
+    
+        c[i * n + j] = result;
+    }
 }

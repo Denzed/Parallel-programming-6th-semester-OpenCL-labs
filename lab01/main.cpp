@@ -12,14 +12,24 @@
 #include <iterator>
 #include <vector>
 
+const int BLOCKSIZE = 16;
+
 void read_float_matrix(std::ifstream &input_file, float *matrix, size_t size) {
     for (size_t i = 0; i < size; ++i) {
         input_file >> matrix[i];
     }
 }
 
-int main()
-{
+size_t upscale_to_divisible(size_t divisible, size_t divisor) {
+    size_t mod = divisible % divisor;
+    if (mod == 0) {
+        return divisible;
+    } else {
+        return divisible + divisor - mod;
+    }
+}
+
+int main() {
     std::vector<cl::Platform> platforms;
     std::vector<cl::Device> devices;
     std::vector<cl::Kernel> kernels;
@@ -43,10 +53,9 @@ int main()
 
         // read data
         std::ifstream input_file("input.txt");
-        size_t N, M, HM;
+        size_t N, M;
         input_file >> N >> M;
-        HM = (M - 1) >> 1;
-
+        
         float a[N * N];
         float b[M * M];
         float c[N * N];
@@ -59,7 +68,13 @@ int main()
         cl::Program program(context, source);
 
         // compile opencl source
-        program.build(devices, ("-D HM=" + std::to_string(HM)).c_str());
+        program.build(
+            devices, 
+            (
+                "-D BLOCKSIZE=" + std::to_string(BLOCKSIZE) + " "
+                "-D M=" + std::to_string(M)
+            ).c_str()
+        );
 
         // create message 
         // allocate device buffer to hold message
@@ -82,8 +97,11 @@ int main()
         cl::EnqueueArgs matrix_conv_eargs(
             queue, 
             cl::NullRange, 
-            cl::NDRange(N, N), 
-            cl::NDRange(2 * HM + 1, 2 * HM + 1)
+            cl::NDRange(
+                upscale_to_divisible(N, BLOCKSIZE), 
+                upscale_to_divisible(N, BLOCKSIZE)
+            ), 
+            cl::NDRange(BLOCKSIZE, BLOCKSIZE)
         );
         matrix_conv(matrix_conv_eargs, dev_a, N, dev_b, M, dev_c);
 
