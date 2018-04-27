@@ -13,13 +13,7 @@ __kernel void matrix_conv(
 
     __local float b_local[M][M];
     // load b to local memory for faster access inside work group
-    if (i_wg == 0 && j_wg == 0) {
-        for (int i_b = 0; i_b < m; ++i_b) {
-            for (int j_b = 0; j_b < m; ++j_b) {
-                b_local[i_b][j_b] = b[i_b * m + j_b];
-            }
-        }
-    }
+    b_local[i_wg][j_wg] = b[i_wg * m + j_wg];
 
     // wait for b to load
     barrier(CLK_LOCAL_MEM_FENCE);
