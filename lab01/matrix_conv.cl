@@ -12,10 +12,12 @@ __kernel void matrix_conv(
     int j_wg = get_local_id(1);
 
     __local float b_local[M][M];
-    // load b to local memory for faster access inside work group
-    b_local[i_wg][j_wg] = b[i_wg * m + j_wg];
+    // load B to local memory for faster access inside work group
+    if (i_wg < m && j_wg < m) {
+        b_local[i_wg][j_wg] = b[i_wg * m + j_wg];
+    }
 
-    // wait for b to load
+    // wait for B to load
     barrier(CLK_LOCAL_MEM_FENCE);
 
     // check that we are computing value inside C
