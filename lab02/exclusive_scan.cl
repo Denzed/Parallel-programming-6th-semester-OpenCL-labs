@@ -1,8 +1,8 @@
 __kernel void scan_blelloch(
-    __global double *a, 
-    __global int n, 
-    __global double *r, 
-    __local double *b
+    __global float *a, 
+    int n, 
+    __global float *r, 
+    __local float *b
 ) {
     uint gid = get_global_id(0);
     uint lid = get_local_id(0);
@@ -50,19 +50,19 @@ __kernel void scan_blelloch(
     }
 }
 
-__kernel void reduce(
-    __global int *a, 
-    __global int n, 
-    __global int *r
+__kernel void expand(
+    __global float *a, 
+    int n, 
+    __global float *r
 ) {
     uint gid = get_global_id(0);
     uint lid = get_local_id(0);
     uint block_size = get_local_size(0);
     uint dp = 1;
 
-    __local double added_value = 0;
-    if (lid == 0 && gid / block_size > 0) {
-        added_value = a[gid / block_size - 1];
+    __local float added_value;
+    if (lid == 0) {
+        added_value = a[gid / block_size];
     }
     barrier(CLK_LOCAL_MEM_FENCE);
 
